@@ -28,6 +28,8 @@ import com.fsck.k9.helper.Utility;
 import com.fsck.k9.mail.Address;
 import com.fsck.k9.mail.MessagingException;
 import com.fsck.k9.mail.NetworkType;
+import com.fsck.k9.mail.ServerSettings;
+import com.fsck.k9.mail.Transport;
 import com.fsck.k9.mail.Store;
 import com.fsck.k9.mail.Folder.FolderClass;
 import com.fsck.k9.mail.filter.Base64;
@@ -115,6 +117,8 @@ public class Account implements BaseAccount, StoreConfig {
     public static final String IDENTITY_EMAIL_KEY = "email";
     public static final String IDENTITY_DESCRIPTION_KEY = "description";
 
+    public static final String DONT_STORE_MY_PASSWORD = "DONT_STORE_MY_PASSWORD";
+
     /*
      * http://developer.android.com/design/style/color.html
      * Note: Order does matter, it's the order in which they will be picked.
@@ -164,6 +168,7 @@ public class Account implements BaseAccount, StoreConfig {
 
     private final String mUuid;
     private String mStoreUri;
+    private boolean mStoreUri_DontStorePassword;
 
     /**
      * Storage provider ID, used to locate and manage the underlying DB/file
@@ -171,6 +176,7 @@ public class Account implements BaseAccount, StoreConfig {
      */
     private String mLocalStorageProviderId;
     private String mTransportUri;
+    private boolean mTransportUri_DontStorePassword;
     private String mDescription;
     private String mAlwaysBcc;
     private int mAutomaticCheckIntervalMinutes;
@@ -380,8 +386,10 @@ public class Account implements BaseAccount, StoreConfig {
         SharedPreferences prefs = preferences.getPreferences();
 
         mStoreUri = Base64.decode(prefs.getString(mUuid + ".storeUri", null));
+        mStoreUri_DontStorePassword = decodeIfDontStoreIncomingPassword(mStoreUri);
         mLocalStorageProviderId = prefs.getString(mUuid + ".localStorageProvider", StorageManager.getInstance(K9.app).getDefaultProviderId());
         mTransportUri = Base64.decode(prefs.getString(mUuid + ".transportUri", null));
+        mTransportUri_DontStorePassword = decodeIfDontStoreOutgoingPassword(mTransportUri);
         mDescription = prefs.getString(mUuid + ".description", null);
         mAlwaysBcc = prefs.getString(mUuid + ".alwaysBcc", mAlwaysBcc);
         mAutomaticCheckIntervalMinutes = prefs.getInt(mUuid + ".automaticCheckIntervalMinutes", -1);
@@ -471,7 +479,7 @@ public class Account implements BaseAccount, StoreConfig {
         mRemoteSearchFullText = prefs.getBoolean(mUuid + ".remoteSearchFullText", false);
         mRemoteSearchNumResults = prefs.getInt(mUuid + ".remoteSearchNumResults", DEFAULT_REMOTE_SEARCH_NUM_RESULTS);
 
-        mEnabled = prefs.getBoolean(mUuid + ".enabled", true);
+        mEnabled = prefs.getBoolean(mUuid + ".enabled", true) && !mStoreUri_DontStorePassword && !mTransportUri_DontStorePassword;
         mMarkMessageAsReadOnView = prefs.getBoolean(mUuid + ".markMessageAsReadOnView", true);
         mAlwaysShowCcBcc = prefs.getBoolean(mUuid + ".alwaysShowCcBcc", false);
 
@@ -670,9 +678,9 @@ public class Account implements BaseAccount, StoreConfig {
             editor.putString("accountUuids", accountUuids);
         }
 
-        editor.putString(mUuid + ".storeUri", Base64.encode(mStoreUri));
+        editor.putString(mUuid + ".storeUri", Base64.encode(encodeIfDontStoreIncomingPassword(mStoreUri, mStoreUri_DontStorePassword)));
         editor.putString(mUuid + ".localStorageProvider", mLocalStorageProviderId);
-        editor.putString(mUuid + ".transportUri", Base64.encode(mTransportUri));
+        editor.putString(mUuid + ".transportUri", Base64.encode(encodeIfDontStoreOutgoingPassword(mTransportUri, mTransportUri_DontStorePassword)));
         editor.putString(mUuid + ".description", mDescription);
         editor.putString(mUuid + ".alwaysBcc", mAlwaysBcc);
         editor.putInt(mUuid + ".automaticCheckIntervalMinutes", mAutomaticCheckIntervalMinutes);
@@ -877,6 +885,18 @@ public class Account implements BaseAccount, StoreConfig {
         this.mStoreUri = storeUri;
     }
 
+    public synchronized boolean getStoreUri_DontStorePassword() {
+        return mStoreUri_DontStorePassword;
+    }
+
+    public synchronized void setStoreUri_DontStorePassword(boolean dontStorePassword) {
+        this.mStoreUri_DontStorePassword = dontStorePassword;
+        if (dontStorePassword) {
+            this.mStoreUri = encodeIfDontStoreIncomingPassword(mStoreUri, true);
+            this.mEnabled = false; // Setting changed => disabling account until password is entered
+        }
+    }
+
     public synchronized String getTransportUri() {
         return mTransportUri;
     }
@@ -885,9 +905,75 @@ public class Account implements BaseAccount, StoreConfig {
         this.mTransportUri = transportUri;
     }
 
+    public synchronized boolean getTransportUri_DontStorePassword() {
+        return mTransportUri_DontStorePassword;
+    }
+
+    public synchronized void setTransportUri_DontStorePassword(boolean dontStorePassword) {
+        this.mTransportUri_DontStorePassword = dontStorePassword;
+        if (dontStorePassword) {
+            this.mTransportUri = encodeIfDontStoreOutgoingPassword(mTransportUri, true);
+            this.mEnabled = false; // Setting changed => disabling account until password is entered
+        }
+    }
+
+    public synchronized void forgetSessionPasswords() {
+        if (mStoreUri_DontStorePassword) {
+            setStoreUri_DontStorePassword(true); // Will reset the session password
+        }
+        if (mTransportUri_DontStorePassword) {
+            setTransportUri_DontStorePassword(true); // Will reset the session password
+        }
+    }
+
+    public synchronized String getUndecoratedDescription() {
+        return mDescription;
+    }
+
+    protected boolean decodeIfDontStoreIncomingPassword(String storeUri) {
+        ServerSettings incoming = RemoteStore.decodeStoreUri(storeUri);
+        return ((incoming.password != null) && incoming.password.equals(DONT_STORE_MY_PASSWORD));
+    }
+
+    protected String encodeIfDontStoreIncomingPassword(String storeUri, boolean DontStorePassword) {
+        if (DontStorePassword) {
+            ServerSettings incoming = RemoteStore.decodeStoreUri(storeUri);
+            ServerSettings newIncoming = incoming.newPassword(DONT_STORE_MY_PASSWORD);
+            return RemoteStore.createStoreUri(newIncoming);
+        }
+        else
+            return storeUri;
+    }
+
+    protected boolean decodeIfDontStoreOutgoingPassword(String transportUri) {
+        ServerSettings outgoing = Transport.decodeTransportUri(transportUri);
+        return ((outgoing.password != null) && outgoing.password.equals(DONT_STORE_MY_PASSWORD));
+    }
+
+    protected String encodeIfDontStoreOutgoingPassword(String transportUri, boolean DontStorePassword) {
+        if (DontStorePassword) {
+            ServerSettings outgoing = Transport.decodeTransportUri(transportUri);
+            ServerSettings newOutgoing = outgoing.newPassword(DONT_STORE_MY_PASSWORD);
+            return Transport.createTransportUri(newOutgoing);
+        }
+        else
+            return transportUri;
+    }
+
+    public synchronized boolean needsToAskForSessionPasswords() {
+        return (!mEnabled) && (mStoreUri_DontStorePassword || mTransportUri_DontStorePassword);
+    }
+
+    public synchronized boolean canForgetPasswords() {
+        return (mEnabled) && (mStoreUri_DontStorePassword || mTransportUri_DontStorePassword);
+    }
+
     @Override
     public synchronized String getDescription() {
-        return mDescription;
+        if (!mEnabled)
+            return "[-]"+mDescription;
+        else
+            return mDescription;
     }
 
     @Override

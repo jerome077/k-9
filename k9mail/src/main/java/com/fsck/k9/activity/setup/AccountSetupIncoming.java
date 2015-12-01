@@ -40,7 +40,7 @@ import java.net.URISyntaxException;
 import java.util.HashMap;
 import java.util.Map;
 
-public class AccountSetupIncoming extends K9Activity implements OnClickListener {
+public class AccountSetupIncoming extends K9Activity implements OnClickListener, OnCheckedChangeListener {
     private static final String EXTRA_ACCOUNT = "account";
     private static final String EXTRA_MAKE_DEFAULT = "makeDefault";
     private static final String STATE_SECURITY_TYPE_POSITION = "stateSecurityTypePosition";
@@ -49,6 +49,7 @@ public class AccountSetupIncoming extends K9Activity implements OnClickListener 
     private Type mStoreType;
     private EditText mUsernameView;
     private EditText mPasswordView;
+    private CheckBox mPasswordNotStored;
     private ClientCertificateSpinner mClientCertificateSpinner;
     private TextView mClientCertificateLabelView;
     private TextView mPasswordLabelView;
@@ -99,6 +100,7 @@ public class AccountSetupIncoming extends K9Activity implements OnClickListener 
 
         mUsernameView = (EditText)findViewById(R.id.account_username);
         mPasswordView = (EditText)findViewById(R.id.account_password);
+        mPasswordNotStored = (CheckBox)findViewById(R.id.account_password_not_stored);
         mClientCertificateSpinner = (ClientCertificateSpinner)findViewById(R.id.account_client_certificate_spinner);
         mClientCertificateLabelView = (TextView)findViewById(R.id.account_client_certificate_label);
         mPasswordLabelView = (TextView)findViewById(R.id.account_password_label);
@@ -119,6 +121,7 @@ public class AccountSetupIncoming extends K9Activity implements OnClickListener 
         mSubscribedFoldersOnly = (CheckBox)findViewById(R.id.subscribed_folders_only);
 
         mNextButton.setOnClickListener(this);
+        mPasswordNotStored.setOnCheckedChangeListener(this);
 
         mImapAutoDetectNamespaceView.setOnCheckedChangeListener(new OnCheckedChangeListener() {
             @Override
@@ -171,7 +174,10 @@ public class AccountSetupIncoming extends K9Activity implements OnClickListener 
                 mUsernameView.setText(settings.username);
             }
 
-            if (settings.password != null) {
+            if (mAccount.getStoreUri_DontStorePassword()) {
+                mPasswordNotStored.setChecked(true);
+            }
+            else if (settings.password != null) {
                 mPasswordView.setText(settings.password);
             }
 
@@ -357,6 +363,20 @@ public class AccountSetupIncoming extends K9Activity implements OnClickListener 
         mPortView.addTextChangedListener(validationTextWatcher);
     }
 
+    protected void onPasswordNotStoredClicked(boolean isChecked) {
+        mPasswordView.setEnabled(!isChecked);
+        validateFields();
+    }
+
+
+    public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+        switch (buttonView.getId()) {
+            case R.id.account_password_not_stored:
+                onPasswordNotStoredClicked(isChecked);
+                break;
+        }
+    }
+
     @Override
     public void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
@@ -457,7 +477,8 @@ public class AccountSetupIncoming extends K9Activity implements OnClickListener 
 
         boolean hasValidPasswordSettings = hasValidUserName
                 && !isAuthTypeExternal
-                && Utility.requiredFieldValid(mPasswordView);
+                && (Utility.requiredFieldValid(mPasswordView)
+                    || mPasswordNotStored.isChecked());
 
         boolean hasValidExternalAuthSettings = hasValidUserName
                 && isAuthTypeExternal
@@ -576,6 +597,7 @@ public class AccountSetupIncoming extends K9Activity implements OnClickListener 
                     connectionSecurity, authType, username, password, clientCertificateAlias, extra);
 
             mAccount.setStoreUri(RemoteStore.createStoreUri(settings));
+            mAccount.setStoreUri_DontStorePassword(mPasswordNotStored.isChecked());
 
             mAccount.setCompression(NetworkType.MOBILE, mCompressionMobile.isChecked());
             mAccount.setCompression(NetworkType.WIFI, mCompressionWifi.isChecked());

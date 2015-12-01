@@ -1144,6 +1144,11 @@ Please submit bug reports, contribute new features and ask questions at
     <string name="openpgp_result_no_name">"No name"</string>
     <string name="openpgp_result_no_email">"No email"</string>
 
+    <string name="account_setup_password_not_stored">Don\'t store my password</string>
+    <string name="settings_import_activate_account_header_session_pwd">Session password</string>
+    <string name="settings_import_activate_account_intro_session_pwd">Press cancel to read saved messages or enter password to activate \"<xliff:g id="account">%s</xliff:g>\".</string>
+    <string name="forget_session_pwds">Forget session passwords</string>
+
     <!-- === Client certificates specific ================================================================== -->
     <string name="account_setup_basics_client_certificate">Use client certificate</string>
     <string name="client_certificate_spinner_empty">No client certificate</string>

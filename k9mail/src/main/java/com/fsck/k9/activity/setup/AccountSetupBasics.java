@@ -62,6 +62,7 @@ public class AccountSetupBasics extends K9Activity
 
     private EditText mEmailView;
     private EditText mPasswordView;
+    private CheckBox mPasswordNotStored;
     private CheckBox mClientCertificateCheckBox;
     private ClientCertificateSpinner mClientCertificateSpinner;
     private Button mNextButton;
@@ -84,6 +85,7 @@ public class AccountSetupBasics extends K9Activity
         setContentView(R.layout.account_setup_basics);
         mEmailView = (EditText)findViewById(R.id.account_email);
         mPasswordView = (EditText)findViewById(R.id.account_password);
+        mPasswordNotStored = (CheckBox)findViewById(R.id.account_password_not_stored);
         mClientCertificateCheckBox = (CheckBox)findViewById(R.id.account_client_certificate);
         mClientCertificateSpinner = (ClientCertificateSpinner)findViewById(R.id.account_client_certificate_spinner);
         mNextButton = (Button)findViewById(R.id.next);
@@ -96,9 +98,10 @@ public class AccountSetupBasics extends K9Activity
     private void initializeViewListeners() {
         mEmailView.addTextChangedListener(this);
         mPasswordView.addTextChangedListener(this);
+        mPasswordNotStored.setOnCheckedChangeListener(this);
         mClientCertificateCheckBox.setOnCheckedChangeListener(this);
         mClientCertificateSpinner.setOnClientCertificateChangedListener(this);
-        mShowPasswordCheckBox.setOnCheckedChangeListener (new OnCheckedChangeListener() {
+        mShowPasswordCheckBox.setOnCheckedChangeListener(new OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 showPassword(isChecked);
@@ -174,13 +177,27 @@ public class AccountSetupBasics extends K9Activity
      */
     @Override
     public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-        updateViewVisibility(isChecked);
-        validateFields();
-
-        // Have the user select (or confirm) the client certificate
-        if (isChecked) {
-            mClientCertificateSpinner.chooseCertificate();
+        switch (buttonView.getId()) {
+            case R.id.account_password_not_stored:
+                onPasswordNotStoredClicked(isChecked);
+                break;
+            case R.id.account_client_certificate:
+                updateViewVisibility(isChecked);
+                validateFields();
+                // Have the user select (or confirm) the client certificate
+                if (isChecked) {
+                    mClientCertificateSpinner.chooseCertificate();
+                }
+                break;
+            default:
+                updateViewVisibility(isChecked);
+                validateFields();
         }
+    }
+
+    protected void onPasswordNotStoredClicked(boolean isChecked) {
+        mPasswordView.setEnabled(!isChecked);
+        validateFields();
     }
 
     private void updateViewVisibility(boolean usingCertificates) {
@@ -211,7 +228,7 @@ public class AccountSetupBasics extends K9Activity
         String email = mEmailView.getText().toString();
 
         boolean valid = Utility.requiredFieldValid(mEmailView)
-                && ((!clientCertificateChecked && Utility.requiredFieldValid(mPasswordView))
+                && ((!clientCertificateChecked && (Utility.requiredFieldValid(mPasswordView) || mPasswordNotStored.isChecked()) )
                         || (clientCertificateChecked && clientCertificateAlias != null))
                 && mEmailValidator.isValidAddressOnly(email);
 
@@ -273,6 +290,8 @@ public class AccountSetupBasics extends K9Activity
     private void finishAutoSetup() {
         String email = mEmailView.getText().toString();
         String password = mPasswordView.getText().toString();
+        if (mPasswordNotStored.isChecked())
+            password = Account.DONT_STORE_MY_PASSWORD;
         String[] emailParts = splitEmail(email);
         String user = emailParts[0];
         String domain = emailParts[1];
@@ -316,7 +335,9 @@ public class AccountSetupBasics extends K9Activity
             mAccount.setName(getOwnerName());
             mAccount.setEmail(email);
             mAccount.setStoreUri(incomingUri.toString());
+            mAccount.setStoreUri_DontStorePassword(mPasswordNotStored.isChecked());
             mAccount.setTransportUri(outgoingUri.toString());
+            mAccount.setTransportUri_DontStorePassword(mPasswordNotStored.isChecked());
 
             setupFolderNames(incomingUriTemplate.getHost().toLowerCase(Locale.US));
 
@@ -395,6 +416,8 @@ public class AccountSetupBasics extends K9Activity
         } else {
             authenticationType = AuthType.PLAIN;
             password = mPasswordView.getText().toString();
+            if (mPasswordNotStored.isChecked())
+                password = Account.DONT_STORE_MY_PASSWORD;
         }
 
         if (mAccount == null) {

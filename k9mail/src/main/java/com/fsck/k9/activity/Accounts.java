@@ -781,19 +781,22 @@ public class Accounts extends K9ListActivity implements OnItemClickListener {
                     && !(ServerSettings.Type.WebDAV == outgoing.type)
                     && outgoing.username != null
                     && !outgoing.username.isEmpty()
-                    && (outgoing.password == null || outgoing.password
-                            .isEmpty());
+                    && (outgoing.password == null
+                        || outgoing.password.isEmpty()
+                        || outgoing.password.equals(Account.DONT_STORE_MY_PASSWORD));
 
             boolean configureIncomingServer = AuthType.EXTERNAL != incoming.authenticationType
-                    && (incoming.password == null || incoming.password
-                            .isEmpty());
+                    && (incoming.password == null
+                        || incoming.password.isEmpty()
+                        || incoming.password.equals(Account.DONT_STORE_MY_PASSWORD));
 
             // Create a ScrollView that will be used as container for the whole layout
             final ScrollView scrollView = new ScrollView(activity);
 
             // Create the dialog
             final AlertDialog.Builder builder = new AlertDialog.Builder(activity);
-            builder.setTitle(activity.getString(R.string.settings_import_activate_account_header));
+            int titleID = (mAccount.needsToAskForSessionPasswords())?R.string.settings_import_activate_account_header_session_pwd:R.string.settings_import_activate_account_header;
+            builder.setTitle(activity.getString(titleID));
             builder.setView(scrollView);
             builder.setPositiveButton(activity.getString(R.string.okay_action),
             new DialogInterface.OnClickListener() {
@@ -837,8 +840,8 @@ public class Accounts extends K9ListActivity implements OnItemClickListener {
             String serverPasswords = activity.getResources().getQuantityString(
                     R.plurals.settings_import_server_passwords,
                     (configureIncomingServer && configureOutgoingServer) ? 2 : 1);
-            intro.setText(activity.getString(R.string.settings_import_activate_account_intro,
-                                             mAccount.getDescription(), serverPasswords));
+            int introID = (mAccount.needsToAskForSessionPasswords())?R.string.settings_import_activate_account_intro_session_pwd:R.string.settings_import_activate_account_intro;
+            intro.setText(activity.getString(introID, mAccount.getDescription(), serverPasswords));
 
             if (configureIncomingServer) {
                 // Display the hostname of the incoming server
@@ -1268,6 +1271,9 @@ public class Accounts extends K9ListActivity implements OnItemClickListener {
         case R.id.import_settings:
             onImport();
             break;
+        case R.id.forget_session_pwds:
+            onForgetSessionPwds();
+            break;
         default:
             return super.onOptionsItemSelected(item);
         }
@@ -1443,6 +1449,14 @@ public class Accounts extends K9ListActivity implements OnItemClickListener {
             onImport(data.getData());
             break;
         }
+    }
+
+    private void onForgetSessionPwds() {
+        List<Account> accounts = Preferences.getPreferences(this).getAccounts();
+        for (Account account : accounts) {
+            account.forgetSessionPasswords();
+        }
+        mHandler.dataChanged();
     }
 
     private void onImport(Uri uri) {
@@ -2149,4 +2163,25 @@ public class Accounts extends K9ListActivity implements OnItemClickListener {
             removeProgressDialog();
         }
     }
+
+    @Override
+    public boolean onPrepareOptionsMenu(Menu menu) {
+        configureMenu(menu);
+        return true;
+    }
+
+    private void configureMenu(Menu menu) {
+        if (menu == null) {
+            return;
+        }
+
+        boolean needsMenuToForgetSessionPwds = false;
+        List<Account> accounts = Preferences.getPreferences(this).getAccounts();
+        for (Account account : accounts) {
+            if (account.canForgetPasswords())
+                needsMenuToForgetSessionPwds = true;
+        }
+           menu.findItem(R.id.forget_session_pwds).setVisible(needsMenuToForgetSessionPwds);
+    }
+
 }

@@ -41,6 +41,7 @@ public class AccountSetupOutgoing extends K9Activity implements OnClickListener,
 
     private EditText mUsernameView;
     private EditText mPasswordView;
+    private CheckBox mPasswordNotStored;
     private ClientCertificateSpinner mClientCertificateSpinner;
     private TextView mClientCertificateLabelView;
     private TextView mPasswordLabelView;
@@ -97,6 +98,7 @@ public class AccountSetupOutgoing extends K9Activity implements OnClickListener,
 
         mUsernameView = (EditText)findViewById(R.id.account_username);
         mPasswordView = (EditText)findViewById(R.id.account_password);
+        mPasswordNotStored = (CheckBox)findViewById(R.id.account_password_not_stored);
         mClientCertificateSpinner = (ClientCertificateSpinner)findViewById(R.id.account_client_certificate_spinner);
         mClientCertificateLabelView = (TextView)findViewById(R.id.account_client_certificate_label);
         mPasswordLabelView = (TextView)findViewById(R.id.account_password_label);
@@ -109,6 +111,7 @@ public class AccountSetupOutgoing extends K9Activity implements OnClickListener,
         mNextButton = (Button)findViewById(R.id.next);
 
         mNextButton.setOnClickListener(this);
+        mPasswordNotStored.setOnCheckedChangeListener(this);
 
         mSecurityTypeView.setAdapter(ConnectionSecurityAdapter.get(this));
 
@@ -171,7 +174,10 @@ public class AccountSetupOutgoing extends K9Activity implements OnClickListener,
                 mRequireLoginSettingsView.setVisibility(View.VISIBLE);
             }
 
-            if (settings.password != null) {
+            if (mAccount.getTransportUri_DontStorePassword()) {
+                mPasswordNotStored.setChecked(true);
+            }
+            else if (settings.password != null) {
                 mPasswordView.setText(settings.password);
             }
 
@@ -403,7 +409,8 @@ public class AccountSetupOutgoing extends K9Activity implements OnClickListener,
 
         boolean hasValidPasswordSettings = hasValidUserName
                 && !isAuthTypeExternal
-                && Utility.requiredFieldValid(mPasswordView);
+                && (Utility.requiredFieldValid(mPasswordView)
+                    || mPasswordNotStored.isChecked());
 
         boolean hasValidExternalAuthSettings = hasValidUserName
                 && isAuthTypeExternal
@@ -470,6 +477,7 @@ public class AccountSetupOutgoing extends K9Activity implements OnClickListener,
         uri = Transport.createTransportUri(server);
         mAccount.deleteCertificate(newHost, newPort, CheckDirection.OUTGOING);
         mAccount.setTransportUri(uri);
+        mAccount.setTransportUri_DontStorePassword(mPasswordNotStored.isChecked());
         AccountSetupCheckSettings.actionCheckSettings(this, mAccount, CheckDirection.OUTGOING);
     }
 
@@ -481,9 +489,25 @@ public class AccountSetupOutgoing extends K9Activity implements OnClickListener,
         }
     }
 
-    public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+    protected void onRequireLoginClicked(boolean isChecked) {
         mRequireLoginSettingsView.setVisibility(isChecked ? View.VISIBLE : View.GONE);
         validateFields();
+    }
+
+    protected void onPasswordNotStoredClicked(boolean isChecked) {
+        mPasswordView.setEnabled(!isChecked);
+        validateFields();
+    }
+
+    public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+        switch (buttonView.getId()) {
+            case R.id.account_require_login:
+                onRequireLoginClicked(isChecked);
+                break;
+            case R.id.account_password_not_stored:
+                onPasswordNotStoredClicked(isChecked);
+                break;
+        }
     }
 
     private void failure(Exception use) {
